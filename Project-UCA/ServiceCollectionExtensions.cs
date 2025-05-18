@@ -70,9 +70,15 @@ namespace Project_UCA
             });
 
             // Add Custom Services
-            services.AddScoped<IAuthService,AuthService>();
+            // Add Repositories
+            services.AddScoped<IUserRepository, UserRepository>();
+            services.AddScoped<IPermissionRepository, PermissionRepository>();
+
+            // Add Services
             services.AddScoped<IUserService, UserService>();
-            services.AddScoped<IUserRepository,UserRepository>();
+            services.AddScoped<IAuthService, AuthService>();
+            services.AddScoped<IPermissionService, PermissionService>();
+
 
             // Add Controllers and Views
             services.AddControllersWithViews();
