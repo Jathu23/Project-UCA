@@ -1,40 +1,35 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
-using Project_UCA.DTO;
-using Project_UCA.Models;
-using Project_UCA.Services;
+﻿using Microsoft.AspNetCore.Mvc;
+using Project_UCA.DTOs;
+using Project_UCA.Services.Interfaces;
+using System.Threading.Tasks;
 
 namespace Project_UCA.Controllers
 {
-    [ApiController]
     [Route("api/auth")]
+    [ApiController]
     public class AuthController : ControllerBase
     {
-        private readonly UserManager<ApplicationUser> _userManager;
-        private readonly AuthService _authService;
+        private readonly IAuthService _authService;
 
-        public AuthController(UserManager<ApplicationUser> userManager, AuthService authService)
+        public AuthController(IAuthService authService)
         {
-            _userManager = userManager;
             _authService = authService;
         }
 
         [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] LoginDto dto)
+        public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
         {
-            var user = await _userManager.FindByEmailAsync(dto.Email);
-            if (user == null || !await _userManager.CheckPasswordAsync(user, dto.Password))
+            if (!ModelState.IsValid)
             {
-                return Unauthorized("Invalid credentials");
+                return BadRequest(ModelState);
             }
 
-            if (await _userManager.IsLockedOutAsync(user))
+            var (success, token, errorMessage) = await _authService.LoginAsync(loginDto);
+            if (!success)
             {
-                return Unauthorized("Account locked. Try again later.");
+                return Unauthorized(new { Error = errorMessage });
             }
 
-            var token = await _authService.GenerateJwtToken(user);
             return Ok(new { Token = token });
         }
     }

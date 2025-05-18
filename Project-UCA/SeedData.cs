@@ -2,12 +2,15 @@
 using Microsoft.EntityFrameworkCore;
 using Project_UCA.Data;
 using Project_UCA.Models;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Project_UCA.Data
 {
     public static class SeedData
     {
-        public static async Task Initialize(ApplicationDbContext context, RoleManager<IdentityRole<int>> roleManager)
+        public static async Task Initialize(ApplicationDbContext context, RoleManager<IdentityRole<int>> roleManager, UserManager<ApplicationUser> userManager)
         {
             // Ensure database is created
             await context.Database.EnsureCreatedAsync();
@@ -104,6 +107,34 @@ namespace Project_UCA.Data
                 }
             }
             await context.SaveChangesAsync();
+
+            // Seed Master User
+            var masterUserEmail = "master@example.com";
+            if (!await userManager.Users.AnyAsync(u => u.Email == masterUserEmail))
+            {
+                var masterUser = new ApplicationUser
+                {
+                    EmployeeId = "EMP002",
+                    FirstName = "Master",
+                    LastName = "User",
+                    Email = masterUserEmail,
+                    UserName = masterUserEmail,
+                    PhoneNumber = "+1234567890",
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    EmailConfirmed = true // Skip email confirmation
+                };
+
+                var result = await userManager.CreateAsync(masterUser, "Master@123");
+                if (result.Succeeded)
+                {
+                    await userManager.AddToRoleAsync(masterUser, "Master");
+                }
+                else
+                {
+                    throw new Exception($"Failed to create Master user: {string.Join(", ", result.Errors.Select(e => e.Description))}");
+                }
+            }
         }
     }
 }

@@ -1,12 +1,15 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Project_UCA.DTOs;
 using Project_UCA.Services.Interfaces;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace Project_UCA.Controllers
 {
-    [Route("api/user")]
+    [Route("api/[controller]")]
     [ApiController]
+    [Authorize] // Require authentication
     public class UsersController : ControllerBase
     {
         private readonly IUserService _userService;
@@ -24,7 +27,14 @@ namespace Project_UCA.Controllers
                 return BadRequest(ModelState);
             }
 
-            var (success, errorMessage) = await _userService.CreateUserAsync(userDto);
+            // Get caller user ID from JWT claims
+            var callerUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(callerUserIdClaim, out int callerUserId))
+            {
+                return Unauthorized("Invalid user ID in token.");
+            }
+
+            var (success, errorMessage) = await _userService.CreateUserAsync(userDto, callerUserId);
             if (!success)
             {
                 return BadRequest(new { Error = errorMessage });

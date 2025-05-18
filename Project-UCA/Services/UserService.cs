@@ -1,10 +1,13 @@
 ﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Project_UCA.Data;
 using Project_UCA.DTOs;
 using Project_UCA.Models;
 using Project_UCA.Repositories.Interfaces;
 using Project_UCA.Services.Interfaces;
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Project_UCA.Services
@@ -13,22 +16,84 @@ namespace Project_UCA.Services
     {
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IUserRepository _userRepository;
+        private readonly ApplicationDbContext _context;
         private readonly ILogger<UserService> _logger;
 
         public UserService(
             UserManager<ApplicationUser> userManager,
             IUserRepository userRepository,
+            ApplicationDbContext context,
             ILogger<UserService> logger)
         {
             _userManager = userManager;
             _userRepository = userRepository;
+            _context = context;
             _logger = logger;
         }
 
-        public async Task<(bool Success, string ErrorMessage)> CreateUserAsync(UserCreateDto userDto)
+        public async Task<(bool Success, string ErrorMessage)> CreateUserAsync(UserCreateDto userDto, int callerUserId)
         {
             try
             {
+                // Get caller user
+                var caller = await _userManager.FindByIdAsync(callerUserId.ToString());
+                if (caller == null)
+                {
+                    _logger.LogWarning("User creation failed: Caller user ID {CallerId} not found.", callerUserId);
+                    return (false, "Caller user not found.");
+                }
+
+                // Check caller permissions and role
+                var callerRoles = await _userManager.GetRolesAsync(caller);
+                var isMaster = callerRoles.Contains("Master");
+                var isAdmin = callerRoles.Contains("Admin");
+                var isNormalUserWithPermission = !isMaster && !isAdmin &&
+                    await _context.UserPermissions
+                        .AnyAsync(up => up.UserId == caller.Id && up.PermissionId == _context.Permissions.First(p => p.Name == "ManageUsers").Id);
+
+                // Validate requested role
+                if (!new[] { "Master", "Admin", "User" }.Contains(userDto.Role))
+                {
+                    _logger.LogWarning("User creation failed: Invalid role {Role}.", userDto.Role);
+                    return (false, "Invalid role specified.");
+                }
+
+                // Role-based restrictions
+                if (userDto.Role == "Master")
+                {
+                    // Only Master users can create Master users
+                    if (!isMaster)
+                    {
+                        _logger.LogWarning("User creation failed: Caller {CallerId} not authorized to create Master user.", callerUserId);
+                        return (false, "Only Master users can create Master users.");
+                    }
+
+                    // Check Master user limit (max 3)
+                    if (await _userRepository.CountMasterUsersAsync() >= 3)
+                    {
+                        _logger.LogWarning("User creation failed: Maximum 3 Master users allowed.");
+                        return (false, "Maximum 3 Master users allowed.");
+                    }
+                }
+                else if (userDto.Role == "Admin")
+                {
+                    // Master or Admin can create Admin users
+                    if (!isMaster && !isAdmin)
+                    {
+                        _logger.LogWarning("User creation failed: Caller {CallerId} not authorized to create Admin user.", callerUserId);
+                        return (false, "Only Master or Admin users can create Admin users.");
+                    }
+                }
+                else if (userDto.Role == "User")
+                {
+                    // Master, Admin, or normal user with ManageUsers permission can create User
+                    if (!isMaster && !isAdmin && !isNormalUserWithPermission)
+                    {
+                        _logger.LogWarning("User creation failed: Caller {CallerId} not authorized to create User.", callerUserId);
+                        return (false, "You do not have permission to create users.");
+                    }
+                }
+
                 // Check for duplicate EmployeeId
                 if (await _userRepository.EmployeeIdExistsAsync(userDto.EmployeeId))
                 {
@@ -50,7 +115,7 @@ namespace Project_UCA.Services
                     FirstName = userDto.FirstName,
                     LastName = userDto.LastName,
                     Email = userDto.Email,
-                    UserName = userDto.Email, // UserName same as Email
+                    UserName = userDto.Email,
                     PhoneNumber = userDto.PhoneNumber,
                     PositionId = userDto.PositionId,
                     CreatedAt = DateTime.UtcNow,
@@ -66,8 +131,8 @@ namespace Project_UCA.Services
                     return (false, $"Failed to create user: {errors}");
                 }
 
-                // Assign default "User" role
-                var roleResult = await _userManager.AddToRoleAsync(user, "User");
+                // Assign role
+                var roleResult = await _userManager.AddToRoleAsync(user, userDto.Role);
                 if (!roleResult.Succeeded)
                 {
                     var roleErrors = string.Join(", ", roleResult.Errors.Select(e => e.Description));
@@ -75,12 +140,12 @@ namespace Project_UCA.Services
                     return (false, $"Failed to assign role: {roleErrors}");
                 }
 
-                _logger.LogInformation("User {Email} created successfully.", userDto.Email);
+                _logger.LogInformation("User {Email} with role {Role} created successfully by {CallerId}.", userDto.Email, userDto.Role, callerUserId);
                 return (true, null);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error creating user {Email}.", userDto.Email);
+                _logger.LogError(ex, "Unexpected error creating user {Email} by {CallerId}.", userDto.Email, callerUserId);
                 return (false, "An unexpected error occurred.");
             }
         }

@@ -1,84 +1,92 @@
 ﻿using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
-using Project_UCA.Data;
+using Project_UCA.DTOs;
 using Project_UCA.Models;
+using Project_UCA.Services.Interfaces;
+using System;
+using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace Project_UCA.Services
 {
-    public class AuthService
+    public class AuthService : IAuthService
     {
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IConfiguration _configuration;
-        private readonly ApplicationDbContext _dbContext;
+        private readonly ILogger<AuthService> _logger;
 
-        public AuthService(UserManager<ApplicationUser> userManager, IConfiguration configuration, ApplicationDbContext dbContext)
+        public AuthService(
+            UserManager<ApplicationUser> userManager,
+            IConfiguration configuration,
+            ILogger<AuthService> logger)
         {
             _userManager = userManager;
             _configuration = configuration;
-            _dbContext = dbContext;
+            _logger = logger;
         }
 
-        public async Task<List<Claim>> GetUserPermissionClaims(ApplicationUser user)
+        public async Task<(bool Success, string Token, string ErrorMessage)> LoginAsync(LoginDto loginDto)
         {
-            var claims = new List<Claim>();
-
-            // Role-based permissions
-            var rolePermissions = await _dbContext.RolePermissions
-                .Where(rp => _dbContext.UserRoles.Any(ur => ur.UserId == user.Id && ur.RoleId == rp.RoleId))
-                .Select(rp => rp.Permission.Name)
-                .ToListAsync();
-
-            // Position-based permissions
-            var positionPermissions = user.PositionId.HasValue
-                ? await _dbContext.PositionPermissions
-                    .Where(pp => pp.PositionId == user.PositionId.Value)
-                    .Select(pp => pp.Permission.Name)
-                    .ToListAsync()
-                : new List<string>();
-
-            // User-specific permissions
-            var userPermissions = await _dbContext.UserPermissions
-                .Where(up => up.UserId == user.Id)
-                .Select(up => up.Permission.Name)
-                .ToListAsync();
-
-            var allPermissions = rolePermissions.Union(positionPermissions).Union(userPermissions);
-            claims.AddRange(allPermissions.Select(p => new Claim("Permission", p)));
-
-            return claims;
-        }
-
-        public async Task<string> GenerateJwtToken(ApplicationUser user)
-        {
-            var claims = new List<Claim>
+            try
             {
-                new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-                new Claim(JwtRegisteredClaimNames.Email, user.Email)
-            };
+                // Find user by email
+                var user = await _userManager.FindByEmailAsync(loginDto.Email);
+                if (user == null)
+                {
+                    _logger.LogWarning("Login failed: User with email {Email} not found.", loginDto.Email);
+                    return (false, null, "Invalid email or password.");
+                }
 
-            // Add roles as claims
-            var roles = await _userManager.GetRolesAsync(user);
-            claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
+                // Verify password
+                if (!await _userManager.CheckPasswordAsync(user, loginDto.Password))
+                {
+                    _logger.LogWarning("Login failed: Invalid password for {Email}.", loginDto.Email);
+                    return (false, null, "Invalid email or password.");
+                }
 
-            // Add permission claims
-            var permissionClaims = await GetUserPermissionClaims(user);
-            claims.AddRange(permissionClaims);
+                // Get user roles
+                var roles = await _userManager.GetRolesAsync(user);
 
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]));
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-            var token = new JwtSecurityToken(
-                issuer: _configuration["Jwt:Issuer"],
-                audience: _configuration["Jwt:Audience"],
-                claims: claims,
-                expires: DateTime.UtcNow.AddHours(1),
-                signingCredentials: creds
-            );
+                // Generate JWT token
+                var claims = new List<Claim>
+                {
+                    new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                    new Claim(ClaimTypes.Email, user.Email)
+                };
 
-            return new JwtSecurityTokenHandler().WriteToken(token);
+                // Add roles to claims
+                foreach (var role in roles)
+                {
+                    claims.Add(new Claim(ClaimTypes.Role, role));
+                }
+
+                var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]));
+                var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+                var expiry = DateTime.UtcNow.AddDays(1); // Token valid for 1 day
+
+                var token = new JwtSecurityToken(
+                    issuer: _configuration["Jwt:Issuer"],
+                    audience: _configuration["Jwt:Audience"],
+                    claims: claims,
+                    expires: expiry,
+                    signingCredentials: creds
+                );
+
+                var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+
+                _logger.LogInformation("User {Email} logged in successfully.", loginDto.Email);
+                return (true, tokenString, null);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error during login for {Email}.", loginDto.Email);
+                return (false, null, "An unexpected error occurred.");
+            }
         }
     }
 }

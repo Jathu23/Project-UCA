@@ -8,5 +8,6 @@ namespace Project_UCA.Repositories.Interfaces
         Task<bool> EmployeeIdExistsAsync(string employeeId);
         Task<bool> EmailExistsAsync(string email);
         Task<ApplicationUser> GetUserByEmailAsync(string email);
+        Task<int> CountMasterUsersAsync();
     }
 }

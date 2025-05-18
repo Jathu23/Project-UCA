@@ -29,5 +29,12 @@ namespace Project_UCA.Repositories
         {
             return await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
         }
+
+        public async Task<int> CountMasterUsersAsync()
+        {
+            return await _context.UserRoles
+                .Where(ur => ur.RoleId == _context.Roles.First(r => r.Name == "Master").Id)
+                .CountAsync();
+        }
     }
 }
