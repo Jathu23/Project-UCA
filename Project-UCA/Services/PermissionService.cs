@@ -23,5 +23,12 @@ namespace Project_UCA.Services
             _logger.LogInformation("User {UserId} checked for permission {PermissionName}: {HasPermission}", userId, permissionName, hasPermission);
             return hasPermission;
         }
+
+        public async Task<List<string>> GetUserPermissionsAsync(int userId)
+        {
+            var permissions = await _permissionRepository.GetUserPermissionsAsync(userId);
+            _logger.LogInformation("Permissions retrieved for user {UserId}. Count: {Count}", userId, permissions.Count);
+            return permissions;
+        }
     }
 }
