@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
 using Project_UCA;
 using Project_UCA.Data;
+using Project_UCA.Extensions;
 using Project_UCA.Middleware;
 using Project_UCA.Models;
 using System;
