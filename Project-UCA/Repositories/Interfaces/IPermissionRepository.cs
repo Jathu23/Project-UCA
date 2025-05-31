@@ -1,12 +1,13 @@
-﻿using System.Collections.Generic;
-using System.Threading.Tasks;
+﻿using Project_UCA.Models;
 
 namespace Project_UCA.Repositories.Interfaces
 {
     public interface IPermissionRepository
     {
         Task<List<string>> GetUserPermissionsAsync(int userId);
-        Task<bool> AddUserPermissionAsync(int userId, int permissionId);
-        Task<bool> RemoveUserPermissionAsync(int userId, int permissionId);
+        Task<List<Permission>> GetAllPermissionsAsync();
+        Task<int> GetPermissionIdByNameAsync(string permissionName);
+        Task AddUserPermissionAsync(int userId, int permissionId);
+        Task RemoveUserPermissionAsync(int userId, int permissionId);
     }
 }

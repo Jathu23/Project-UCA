@@ -1,12 +1,11 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Project_UCA.Data;
 using Project_UCA.DTOs;
-using Project_UCA.Repositories.Interfaces;
+using Project_UCA.Middleware;
 using Project_UCA.Services.Interfaces;
+using System.Security.Authentication;
 using System.Security.Claims;
-using System.Threading.Tasks;
+
 
 namespace Project_UCA.Controllers
 {
@@ -15,66 +14,83 @@ namespace Project_UCA.Controllers
     [Authorize]
     public class PermissionsController : ControllerBase
     {
-        private readonly IPermissionRepository _permissionRepository;
         private readonly IPermissionService _permissionService;
-        private readonly ApplicationDbContext _context;
 
-        public PermissionsController(
-            IPermissionRepository permissionRepository,
-            IPermissionService permissionService,
-            ApplicationDbContext context)
+        public PermissionsController(IPermissionService permissionService)
         {
-            _permissionRepository = permissionRepository;
-            _permissionService = permissionService;
-            _context = context;
+            _permissionService = permissionService ?? throw new ArgumentNullException(nameof(permissionService));
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetAllPermissions()
+        {
+            if (!TryGetCallerUserId(out int callerUserId))
+                throw new AuthenticationException("Invalid user ID in token.");
+
+            if (!await _permissionService.HasPermissionAsync(callerUserId, "ManagePermissions"))
+                throw new UnauthorizedAccessException("You do not have permission to view permissions.");
+
+            var permissions = await _permissionService.GetAllPermissionsAsync();
+            return Ok(permissions);
+        }
+
+        [HttpGet("user/{userId:int}")]
+        public async Task<IActionResult> GetUserPermissions(int userId)
+        {
+            if (!TryGetCallerUserId(out int callerUserId))
+                throw new AuthenticationException("Invalid user ID in token.");
+
+            if (!await _permissionService.HasPermissionAsync(callerUserId, "ManagePermissions"))
+                throw new UnauthorizedAccessException("You do not have permission to view permissions.");
+
+            var permissions = await _permissionService.GetUserPermissionsAsync(userId);
+            return Ok(permissions);
         }
 
         [HttpPost("assign")]
         public async Task<IActionResult> AssignPermission([FromBody] AssignPermissionDto dto)
         {
-            var callerUserId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+            if (!ModelState.IsValid)
+                throw new ValidationException("Invalid input.", GetModelStateErrors());
+
+            if (!TryGetCallerUserId(out int callerUserId))
+                throw new AuthenticationException("Invalid user ID in token.");
+
             if (!await _permissionService.HasPermissionAsync(callerUserId, "ManagePermissions"))
-            {
-                return Forbid("You do not have permission to manage permissions.");
-            }
+                throw new UnauthorizedAccessException("You do not have permission to manage permissions.");
 
-            var permission = await _context.Permissions.FirstOrDefaultAsync(p => p.Name == dto.PermissionName);
-            if (permission == null)
-            {
-                return BadRequest(new { Error = "Invalid permission name." });
-            }
-
-            var success = await _permissionRepository.AddUserPermissionAsync(dto.UserId, permission.Id);
-            if (!success)
-            {
-                return BadRequest(new { Error = "Permission already assigned or invalid user." });
-            }
-
-            return Ok(new { Message = "Permission assigned successfully." });
+            await _permissionService.AssignPermissionAsync(dto, callerUserId);
+            return Ok(null);
         }
 
         [HttpPost("remove")]
         public async Task<IActionResult> RemovePermission([FromBody] AssignPermissionDto dto)
         {
-            var callerUserId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+            if (!ModelState.IsValid)
+                throw new ValidationException("Invalid input.", GetModelStateErrors());
+
+            if (!TryGetCallerUserId(out int callerUserId))
+                throw new AuthenticationException("Invalid user ID in token.");
+
             if (!await _permissionService.HasPermissionAsync(callerUserId, "ManagePermissions"))
-            {
-                return Forbid("You do not have permission to manage permissions.");
-            }
+                throw new UnauthorizedAccessException("You do not have permission to manage permissions.");
 
-            var permission = await _context.Permissions.FirstOrDefaultAsync(p => p.Name == dto.PermissionName);
-            if (permission == null)
-            {
-                return BadRequest(new { Error = "Invalid permission name." });
-            }
+            await _permissionService.RemovePermissionAsync(dto, callerUserId);
+            return Ok(null);
+        }
 
-            var success = await _permissionRepository.RemoveUserPermissionAsync(dto.UserId, permission.Id);
-            if (!success)
-            {
-                return BadRequest(new { Error = "Permission not assigned to user." });
-            }
+        private bool TryGetCallerUserId(out int callerUserId)
+        {
+            var callerIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            return int.TryParse(callerIdClaim, out callerUserId);
+        }
 
-            return Ok(new { Message = "Permission removed successfully." });
+        private IDictionary<string, string[]> GetModelStateErrors()
+        {
+            return ModelState.ToDictionary(
+                kvp => kvp.Key,
+                kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
+            );
         }
     }
 }
