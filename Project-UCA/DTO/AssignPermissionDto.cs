@@ -8,6 +8,6 @@ namespace Project_UCA.DTOs
         public int UserId { get; set; }
 
         [Required(ErrorMessage = "Permission name is required")]
-        public string PermissionName { get; set; }
+        public required string PermissionName { get; set; }
     }
 }

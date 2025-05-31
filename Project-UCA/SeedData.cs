@@ -138,3 +138,14 @@ namespace Project_UCA.Data
         }
     }
 }
+
+//{
+//    "employeeId": "EMP005",
+//  "firstName": "Jathushan",
+//  "lastName": "Esvaran",
+//  "email": "jathushanj2003@gmail.com",
+//  "phoneNumber": "0769155204",
+//  "password": "Jathu@12345",
+//  "positionId": 1,
+//  "role": "User"
+//}

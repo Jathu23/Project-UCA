@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Project_UCA;
 using Project_UCA.Data;
+using Project_UCA.Middleware;
 using Project_UCA.Models;
 using System;
 
@@ -41,6 +42,7 @@ app.UseRouting();
 
 app.UseAuthentication(); // Add authentication middleware
 app.UseAuthorization();
+app.UseWrapResponseMiddleware();
 
 app.MapControllerRoute(
     name: "default",

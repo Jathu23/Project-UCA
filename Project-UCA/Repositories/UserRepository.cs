@@ -15,141 +15,103 @@ namespace Project_UCA.Repositories
 
         public UserRepository(ApplicationDbContext context)
         {
-            _context = context;
+            _context = context ?? throw new ArgumentNullException(nameof(context));
         }
 
         public async Task<bool> EmployeeIdExistsAsync(string employeeId)
         {
-            return await _context.Users.AnyAsync(u => u.EmployeeId == employeeId);
+            if (string.IsNullOrEmpty(employeeId))
+                return false;
+
+            return await _context.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.EmployeeId == employeeId);
         }
 
         public async Task<bool> EmailExistsAsync(string email)
         {
-            return await _context.Users.AnyAsync(u => u.Email.ToLower() == email.ToLower());
+            if (string.IsNullOrEmpty(email))
+                return false;
+
+            return await _context.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.Email.ToLower() == email.ToLower());
         }
 
         public async Task<int> CountMasterUsersAsync()
         {
+            var masterRoleId = await _context.Roles
+                .AsNoTracking()
+                .Where(r => r.Name == "Master")
+                .Select(r => r.Id)
+                .FirstOrDefaultAsync();
+
             return await _context.UserRoles
-                .CountAsync(ur => ur.RoleId == _context.Roles.First(r => r.Name == "Master").Id);
+                .AsNoTracking()
+                .CountAsync(ur => ur.RoleId == masterRoleId);
         }
 
         public async Task<int> CountUsersAsync(string searchTerm, string role, int? positionId)
         {
-            var query = _context.Users.AsQueryable();
-
-            if (!string.IsNullOrEmpty(searchTerm))
-            {
-                searchTerm = searchTerm.ToLower();
-                query = query.Where(u =>
-                    u.Email.ToLower().Contains(searchTerm) ||
-                    u.FirstName.ToLower().Contains(searchTerm) ||
-                    u.LastName.ToLower().Contains(searchTerm));
-            }
-
-            if (!string.IsNullOrEmpty(role))
-            {
-                query = query.Where(u => _context.UserRoles
-                    .Any(ur => ur.UserId == u.Id && ur.RoleId == _context.Roles.First(r => r.Name == role).Id));
-            }
-
-            if (positionId.HasValue)
-            {
-                query = query.Where(u => u.PositionId == positionId.Value);
-            }
-
+            var query = BuildUserQuery(searchTerm, role, positionId);
             return await query.CountAsync();
         }
 
         public async Task<List<ApplicationUser>> SearchUsersAsync(
-            string searchTerm,
-            string role,
-            int? positionId,
-            string sortBy,
-            bool sortDescending,
-            int skip,
-            int take,
-            bool includeAddress,
-            bool includeAccountDetails,
-            bool includeInvoiceHistory,
-            bool includeInvoiceData)
+            string searchTerm, string role, int? positionId,
+            string sortBy, bool sortDescending, int skip, int take,
+            bool includeAddress, bool includeAccountDetails,
+            bool includeInvoiceHistory, bool includeInvoiceData)
         {
-            var query = _context.Users.AsQueryable();
-
-            // Apply search filters
-            if (!string.IsNullOrEmpty(searchTerm))
-            {
-                searchTerm = searchTerm.ToLower();
-                query = query.Where(u =>
-                    u.Email.ToLower().Contains(searchTerm) ||
-                    u.FirstName.ToLower().Contains(searchTerm) ||
-                    u.LastName.ToLower().Contains(searchTerm));
-            }
-
-            if (!string.IsNullOrEmpty(role))
-            {
-                query = query.Where(u => _context.UserRoles
-                    .Any(ur => ur.UserId == u.Id && ur.RoleId == _context.Roles.First(r => r.Name == role).Id));
-            }
-
-            if (positionId.HasValue)
-            {
-                query = query.Where(u => u.PositionId == positionId.Value);
-            }
+            var query = BuildUserQuery(searchTerm, role, positionId);
 
             // Apply sorting
-            switch (sortBy?.ToLower())
-            {
-                case "email":
-                    query = sortDescending ? query.OrderByDescending(u => u.Email) : query.OrderBy(u => u.Email);
-                    break;
-                case "firstname":
-                    query = sortDescending ? query.OrderByDescending(u => u.FirstName) : query.OrderBy(u => u.FirstName);
-                    break;
-                case "createdat":
-                    query = sortDescending ? query.OrderByDescending(u => u.CreatedAt) : query.OrderBy(u => u.CreatedAt);
-                    break;
-                default:
-                    query = sortDescending ? query.OrderByDescending(u => u.Id) : query.OrderBy(u => u.Id);
-                    break;
-            }
+            query = ApplySorting(query, sortBy, sortDescending);
 
             // Apply pagination
             query = query.Skip(skip).Take(take);
 
             // Include related data
-            if (includeAddress)
-            {
-                query = query.Include(u => u.Address);
-            }
-            if (includeAccountDetails)
-            {
-                query = query.Include(u => u.AccountDetails);
-            }
-            if (includeInvoiceHistory)
-            {
-                query = query.Include(u => u.InvoiceHistories);
-            }
-            if (includeInvoiceData)
-            {
-                query = query.Include(u => u.InvoiceData).ThenInclude(id => id.InvoiceHistories);
-            }
+            query = IncludeRelatedData(query, includeAddress, includeAccountDetails, includeInvoiceHistory, includeInvoiceData);
 
-            return await query.ToListAsync();
+            return await query
+                .AsNoTracking()
+                .ToListAsync();
         }
 
         public async Task<ApplicationUser> GetUserByIdAsync(int userId, bool includeAllDetails)
         {
             var query = _context.Users.AsQueryable();
+
             if (includeAllDetails)
             {
-                query = query
-                    .Include(u => u.Address)
-                    .Include(u => u.AccountDetails)
-                    .Include(u => u.InvoiceHistories)
-                    .Include(u => u.InvoiceData).ThenInclude(id => id.InvoiceHistories);
+                query = IncludeRelatedData(query, true, true, true, true);
             }
-            return await query.FirstOrDefaultAsync(u => u.Id == userId);
+
+            return await query
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == userId);
+        }
+
+        public async Task<Address> GetAddressByUserIdAsync(int userId)
+        {
+            return await _context.Addresses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(a => a.UserId == userId);
+        }
+
+        public async Task<AccountDetails> GetAccountDetailsByUserIdAsync(int userId)
+        {
+            return await _context.AccountDetails
+                .AsNoTracking()
+                .FirstOrDefaultAsync(ad => ad.UserId == userId);
+        }
+
+        public async Task<InvoiceData> GetInvoiceDataByUserIdAndInvoiceNumberAsync(int userId)
+        {
+            return await _context.InvoiceData
+                .AsNoTracking()
+                .FirstOrDefaultAsync(id => id.UserId == userId );
         }
 
         public async Task AddAccountDetailsAsync(AccountDetails accountDetails)
@@ -179,7 +141,6 @@ namespace Project_UCA.Repositories
             }
 
             user.Signature = signaturePath;
-            _context.Users.Update(user);
             await _context.SaveChangesAsync();
         }
 
@@ -191,12 +152,7 @@ namespace Project_UCA.Repositories
                 throw new ArgumentException($"AccountDetails with ID {accountDetails.Id} not found.");
             }
 
-            existing.BankName = accountDetails.BankName;
-            existing.AccountNumber = accountDetails.AccountNumber;
-            existing.Branch = accountDetails.Branch;
-            existing.SwiftCode = accountDetails.SwiftCode;
-
-            _context.AccountDetails.Update(existing);
+            _context.Entry(existing).CurrentValues.SetValues(accountDetails);
             await _context.SaveChangesAsync();
         }
 
@@ -208,14 +164,7 @@ namespace Project_UCA.Repositories
                 throw new ArgumentException($"Address with ID {address.Id} not found.");
             }
 
-            existing.AddressLine1 = address.AddressLine1;
-            existing.AddressLine2 = address.AddressLine2;
-            existing.City = address.City;
-            existing.State = address.State;
-            existing.PostalCode = address.PostalCode;
-            existing.Country = address.Country;
-
-            _context.Addresses.Update(existing);
+            _context.Entry(existing).CurrentValues.SetValues(address);
             await _context.SaveChangesAsync();
         }
 
@@ -231,9 +180,91 @@ namespace Project_UCA.Repositories
             existing.Description = invoiceData.Description;
             existing.Rate = invoiceData.Rate;
             existing.GrossTotal = invoiceData.GrossTotal;
-
-            _context.InvoiceData.Update(existing);
             await _context.SaveChangesAsync();
+        }
+
+        public async Task UpdateUserPositionAsync(int userId, int positionId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+                throw new ArgumentException($"User with ID {userId} not found.");
+
+            var position = await _context.Positions.FindAsync(positionId);
+            if (position == null)
+                throw new ArgumentException($"Position with ID {positionId} not found.");
+
+            user.PositionId = positionId;
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+        public async Task<InvoiceData> GetInvoiceDataByUserIdAsync(int userId)
+        {
+            return await _context.InvoiceData
+                .AsNoTracking()
+                .FirstOrDefaultAsync(id => id.UserId == userId);
+        }
+
+        private IQueryable<ApplicationUser> BuildUserQuery(string searchTerm, string role, int? positionId)
+        {
+            var query = _context.Users.AsQueryable();
+
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                searchTerm = searchTerm.ToLower();
+                query = query.Where(u =>
+                    u.Id.ToString().ToLower().Contains(searchTerm) ||
+                    u.FirstName.ToLower().Contains(searchTerm) ||
+                    u.LastName.ToLower().Contains(searchTerm));
+            }
+
+            if (!string.IsNullOrEmpty(role))
+            {
+                var roleId = _context.Roles
+                    .Where(r => r.Name == role)
+                    .Select(r => r.Id)
+                    .FirstOrDefault();
+                query = query.Where(u => _context.UserRoles
+                    .Any(ur => ur.UserId == u.Id && ur.RoleId == roleId));
+            }
+
+            if (positionId.HasValue)
+            {
+                query = query.Where(u => u.PositionId == positionId.Value);
+            }
+
+            return query;
+        }
+
+        private IQueryable<ApplicationUser> ApplySorting(IQueryable<ApplicationUser> query, string sortBy, bool sortDescending)
+        {
+            switch (sortBy?.ToLower())
+            {
+                case "email":
+                    return sortDescending ? query.OrderByDescending(u => u.Email) : query.OrderBy(u => u.Email);
+                case "firstname":
+                    return sortDescending ? query.OrderByDescending(u => u.FirstName) : query.OrderBy(u => u.FirstName);
+                case "createdat":
+                    return sortDescending ? query.OrderByDescending(u => u.CreatedAt) : query.OrderBy(u => u.CreatedAt);
+                default:
+                    return sortDescending ? query.OrderByDescending(u => u.Id) : query.OrderBy(u => u.Id);
+            }
+        }
+
+        private IQueryable<ApplicationUser> IncludeRelatedData(IQueryable<ApplicationUser> query,
+            bool includeAddress, bool includeAccountDetails,
+            bool includeInvoiceHistory, bool includeInvoiceData)
+        {
+            if (includeAddress)
+                query = query.Include(u => u.Address);
+            if (includeAccountDetails)
+                query = query.Include(u => u.AccountDetails);
+            if (includeInvoiceHistory)
+                query = query.Include(u => u.InvoiceHistories);
+            if (includeInvoiceData)
+                query = query.Include(u => u.InvoiceData)
+                            .ThenInclude(id => id.InvoiceHistories);
+
+            return query;
         }
     }
 }
