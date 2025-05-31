@@ -10,6 +10,7 @@ namespace Project_UCA.Extensions
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IPermissionService, PermissionService>();
+            services.AddScoped<IPositionService, PositionService>();
             return services;
         }
     }

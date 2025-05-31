@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Http;
+using Project_UCA.DTO;
 using Project_UCA.DTOs;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -20,6 +21,6 @@ namespace Project_UCA.Services.Interfaces
         Task UpdateAccountDetailsAsync(AccountDetailsDto_Request dto, int callerUserId);
         Task UpdateAddressAsync(AddressDto_Request dto, int callerUserId);
         Task UpdateInvoiceDataAsync(InvoiceDataDto_Request dto, int callerUserId);
-        Task UpdatePositionAsync(UpdatePositionDto dto, int callerUserId);
+        Task UpdatePositionAsync(UpdateUserPositionDto dto, int callerUserId);
     }
 }

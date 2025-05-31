@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Project_UCA.DTO;
 using Project_UCA.DTOs;
 using Project_UCA.Middleware;
 using Project_UCA.Services.Interfaces;
@@ -35,7 +36,7 @@ namespace Project_UCA.Controllers
         }
 
         [HttpPost("update-position")]
-        public async Task<IActionResult> UpdatePosition([FromBody] UpdatePositionDto dto)
+        public async Task<IActionResult> UpdatePosition([FromBody] UpdateUserPositionDto dto)
         {
             if (!ModelState.IsValid)
                 throw new ValidationException("Invalid input.", GetModelStateErrors());

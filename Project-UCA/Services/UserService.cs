@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Project_UCA.DTO;
 using Project_UCA.DTOs;
 using Project_UCA.Middleware;
 using Project_UCA.Models;
@@ -298,7 +299,7 @@ namespace Project_UCA.Services
             await _userRepository.UpdateInvoiceDataAsync(existingInvoiceData);
         }
 
-        public async Task UpdatePositionAsync(UpdatePositionDto dto, int callerUserId)
+        public async Task UpdatePositionAsync(UpdateUserPositionDto dto, int callerUserId)
         {
             if (dto == null)
                 throw new BadRequestException("Invalid position data.");

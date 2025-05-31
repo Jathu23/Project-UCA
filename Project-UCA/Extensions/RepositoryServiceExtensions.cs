@@ -9,6 +9,7 @@ namespace Project_UCA.Extensions
         {
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<IPermissionRepository, PermissionRepository>();
+            services.AddScoped<IPositionRepository, PositionRepository>();
             return services;
         }
     }
