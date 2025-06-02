@@ -1,6 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Project_UCA.Middleware;
 using Project_UCA.Utilities.Interface;
+using System;
 using System.Threading.Tasks;
 
 namespace Project_UCA.Controllers
@@ -24,13 +26,8 @@ namespace Project_UCA.Controllers
             if (string.IsNullOrWhiteSpace(publicId))
                 throw new BadRequestException("Public ID is required.");
 
-            var (tempUrl, originalUrl, returnedPublicId) = await _cloudinaryService.UploadImageAsync(file, publicId);
-            return Ok(new
-            {
-                TempUrl = tempUrl,
-                OriginalUrl = originalUrl, // Note: This is returned for server use; remove if not needed by client
-                PublicId = returnedPublicId
-            });
+            var (tempUrl, _, returnedPublicId) = await _cloudinaryService.UploadImageAsync(file, publicId);
+            return Ok(new { TempUrl = tempUrl, PublicId = returnedPublicId });
         }
 
         [HttpDelete("delete")]
@@ -38,52 +35,30 @@ namespace Project_UCA.Controllers
         {
             if (string.IsNullOrWhiteSpace(publicId))
                 throw new BadRequestException("Public ID is required.");
-            await _cloudinaryService.DeleteImageAsync(publicId);
-            return Ok(new { Message = "Image deleted successfully." });
-        }
 
-        [HttpGet("url")]
-        public async Task<IActionResult> GetImageUrl([FromQuery] string publicId)
-        {
-            if (string.IsNullOrWhiteSpace(publicId))
-                throw new BadRequestException("Public ID is required.");
-            var tempUrl = await _cloudinaryService.GetImageAsync(publicId);
-            return Ok(new { TempUrl = tempUrl });
+            await _cloudinaryService.DeleteImageAsync(publicId);
+            return Ok(null);
         }
 
         [HttpGet("image")]
-        public async Task<IActionResult> GetImageAsBytes([FromQuery] string publicId)
+        public async Task<IActionResult> GetImage([FromQuery] string publicId)
         {
             if (string.IsNullOrWhiteSpace(publicId))
                 throw new BadRequestException("Public ID is required.");
-            var imageBytes = await _cloudinaryService.DownloadImageAsync(publicId);
-            return File(imageBytes, "image/jpeg"); // Adjust content type as needed
+
+            var imageurl = await _cloudinaryService.GetImageById(publicId);
+            return Ok(imageurl);
         }
 
-        [HttpGet("secure-image/{encodedToken}")]
-        public async Task<IActionResult> GetSecureImage(string encodedToken)
+        [HttpGet("secure-image/{token}")]
+        public async Task<IActionResult> GetSecureImage(string token)
         {
-            if (string.IsNullOrWhiteSpace(encodedToken))
-                throw new BadRequestException("Invalid token.");
-
-            var (isValid, publicId) = _cloudinaryService.ValidateTempUrl(encodedToken);
+            var (isValid, publicId) = _cloudinaryService.ValidateTempUrl(token);
             if (!isValid)
-                return BadRequest(new { Message = "Invalid or expired URL." });
+                throw new BadRequestException("Invalid or expired token.");
 
             var imageBytes = await _cloudinaryService.DownloadImageAsync(publicId);
-            return File(imageBytes, "image/jpeg"); // Adjust content type as needed
-        }
-
-        [HttpGet("validate")]
-        public IActionResult ValidateTempUrl([FromQuery] string tempUrl)
-        {
-            if (string.IsNullOrWhiteSpace(tempUrl))
-                throw new BadRequestException("Temp URL is required.");
-
-            var uri = new Uri(tempUrl);
-            var encodedToken = uri.Segments[^1]; // Get the last segment (encoded token)
-            var (isValid, publicId) = _cloudinaryService.ValidateTempUrl(encodedToken);
-            return Ok(new { IsValid = isValid, PublicId = publicId });
+            return File(imageBytes, "image/jpeg");
         }
     }
 }
