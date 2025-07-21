@@ -1,16 +1,9 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
 using Project_UCA.DTO;
-using Project_UCA.DTOs;
 using Project_UCA.Middleware;
 using Project_UCA.Models;
 using Project_UCA.Repositories.Interfaces;
 using Project_UCA.Services.Interfaces;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Project_UCA.Services
 {
@@ -373,7 +366,7 @@ namespace Project_UCA.Services
                         UserId = i.UserId,
                         InvoiceDataId = i.InvoiceDataId,
                         Action = i.Action,
-                        Timestamp = i.Timestamp,
+                        Timestamp = i.Timestamp.ToString(),
                         Details = i.Details
                     })
                     .ToList();

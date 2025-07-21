@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace Project_UCA.DTOs
+namespace Project_UCA.DTO
 {
     public class UserCreateDto
     {
